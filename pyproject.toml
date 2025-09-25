@@ -1,0 +1,7 @@
+[tool.black]
+line-length = 100
+include = '\\.(py)$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
