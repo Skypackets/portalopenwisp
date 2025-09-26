@@ -15,6 +15,7 @@ class Tenant(TimeStampedModel):
     status = models.CharField(max_length=32, default="active")
     plan = models.CharField(max_length=64, blank=True, default="")
     settings_json = models.JSONField(default=dict, blank=True)
+    secret_salt = models.CharField(max_length=64, blank=True, default="")
 
     def __str__(self) -> str:
         return self.name

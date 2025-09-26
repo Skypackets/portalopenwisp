@@ -18,6 +18,7 @@ class GuestUser(TimeStampedModel):
     phone = models.CharField(max_length=32, blank=True, default="")
     social_id = models.CharField(max_length=128, blank=True, default="")
     mac = models.CharField(max_length=17)
+    mac_hash = models.CharField(max_length=64, blank=True, default="")
     consent_json = models.JSONField(default=dict, blank=True)
 
     def __str__(self) -> str:

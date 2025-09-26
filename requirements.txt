@@ -8,3 +8,5 @@ django-filter==24.3
 django-storages==1.14.4
 boto3==1.35.29
 django-environ==0.11.2
+bleach==6.1.0
+django-redis==5.4.0

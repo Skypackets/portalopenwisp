@@ -1,6 +1,10 @@
+import hashlib
+import hmac
 import random
 import string
 
+import bleach
+from django.core.cache import cache
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -33,7 +37,20 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
 
     # Render stored HTML if present; otherwise fallback to template
     if page.html:
-        return HttpResponse(page.html)
+        sanitized = bleach.clean(
+            page.html,
+            tags=bleach.sanitizer.ALLOWED_TAGS
+            | {"img", "video", "source", "link", "meta", "script"},
+            attributes={
+                "*": ["class", "style", "id", "href", "src", "width", "height", "type", "rel"]
+            },
+            protocols=["http", "https", "data"],
+        )
+        resp = HttpResponse(sanitized)
+        resp["Content-Security-Policy"] = (
+            "default-src 'self' https: data:; img-src 'self' https: data:; script-src 'self' https: 'unsafe-inline'; style-src 'self' https: 'unsafe-inline'"
+        )
+        return resp
     return render(request, "home.html", {"app_name": "Portal OpenWISP"})
 
 
@@ -75,10 +92,21 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
 
 @require_POST
 def event_ingest(request: HttpRequest) -> JsonResponse:
-    # In MVP, accept basic JSON without auth; production should require signed tokens
+    # Require HMAC signature header: X-Portal-Signature: sha256=hex
     data = request.POST or {}
+    tenant_id = data.get("tenant_id")
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "tenant"}, status=400)
+    signature = request.headers.get("X-Portal-Signature", "")
+    body = request.body or b""
+    secret = (tenant.secret_salt or "").encode("utf-8")
+    computed = hmac.new(secret, body, hashlib.sha256).hexdigest()
+    if signature != f"sha256={computed}":
+        return JsonResponse({"ok": False, "error": "sig"}, status=401)
     Event.objects.create(
-        tenant_id=data.get("tenant_id"),
+        tenant_id=tenant_id,
         site_id=data.get("site_id"),
         type=data.get("type", "click"),
         payload_json=data,
@@ -114,6 +142,11 @@ def auth_email_otp(request: HttpRequest) -> JsonResponse:
     email = request.POST.get("email")
     code = _generate_code()
     expires = timezone.now() + timezone.timedelta(minutes=10)
+    # Rate limit by tenant+email
+    rl_key = f"otp:{tenant_id}:{email}"
+    if cache.get(rl_key):
+        return JsonResponse({"ok": False, "error": "rate_limited"}, status=429)
+    cache.set(rl_key, 1, timeout=60)
     otp = EmailOTP.objects.create(tenant_id=tenant_id, email=email, code=code, expires_at=expires)
     # In production, send email via provider. For MVP/dev, return the code to caller for verification.
     return JsonResponse({"ok": True, "otp_id": otp.id, "dev_code": code})
