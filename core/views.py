@@ -1,4 +1,3 @@
-from django.shortcuts import render
 from rest_framework import filters, viewsets
 
 from .models import SSID, Brand, Controller, Site, Tenant

@@ -1,8 +1,6 @@
 import hashlib
 from dataclasses import dataclass
-from typing import Dict
 
-from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 

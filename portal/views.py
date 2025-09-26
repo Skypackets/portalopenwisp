@@ -10,7 +10,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from ads.models import Campaign, Creative, Event, Slot
+from ads.models import Campaign, Event
 from authsvc.models import EmailOTP, GuestUser, Session, Voucher
 from contentmgmt.models import Page
 from core.models import Site, Tenant
@@ -32,23 +32,32 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
     if page is None:
         raise Http404("No published page")
 
-    # basic event record
     Event.objects.create(tenant=tenant, site=site, type="splash_view", payload_json={})
 
-    # Render stored HTML if present; otherwise fallback to template
     if page.html:
         sanitized = bleach.clean(
             page.html,
             tags=bleach.sanitizer.ALLOWED_TAGS
             | {"img", "video", "source", "link", "meta", "script"},
             attributes={
-                "*": ["class", "style", "id", "href", "src", "width", "height", "type", "rel"]
+                "*": [
+                    "class",
+                    "style",
+                    "id",
+                    "href",
+                    "src",
+                    "width",
+                    "height",
+                    "type",
+                    "rel",
+                ]
             },
             protocols=["http", "https", "data"],
         )
         resp = HttpResponse(sanitized)
         resp["Content-Security-Policy"] = (
-            "default-src 'self' https: data:; img-src 'self' https: data:; script-src 'self' https: 'unsafe-inline'; style-src 'self' https: 'unsafe-inline'"
+            "default-src 'self' https: data:; img-src 'self' https: data:; "
+            "script-src 'self' https: 'unsafe-inline'; style-src 'self' https: 'unsafe-inline'"
         )
         return resp
     return render(request, "home.html", {"app_name": "Portal OpenWISP"})
@@ -63,13 +72,10 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
     except (Tenant.DoesNotExist, Site.DoesNotExist) as exc:
         raise Http404 from exc
 
-    # Very simple selector: pick most recent creative from any active campaign
     campaign = (
         Campaign.objects.filter(tenant=tenant, status="active").order_by("-updated_at").first()
     )
-    creative = None
-    if campaign is not None:
-        creative = campaign.creatives.order_by("-updated_at").first()
+    creative = campaign.creatives.order_by("-updated_at").first() if campaign else None
 
     payload = {"creative": None}
     if creative is not None:
@@ -85,14 +91,17 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
             tenant=tenant,
             site=site,
             type="impression",
-            payload_json={"slot": slot, "creative_id": creative.id, "campaign_id": campaign.id},
+            payload_json={
+                "slot": slot,
+                "creative_id": creative.id,
+                "campaign_id": campaign.id,
+            },
         )
     return JsonResponse(payload)
 
 
 @require_POST
 def event_ingest(request: HttpRequest) -> JsonResponse:
-    # Require HMAC signature header: X-Portal-Signature: sha256=hex
     data = request.POST or {}
     tenant_id = data.get("tenant_id")
     try:
@@ -112,9 +121,6 @@ def event_ingest(request: HttpRequest) -> JsonResponse:
         payload_json=data,
     )
     return JsonResponse({"ok": True})
-
-
-# --- Auth Endpoints (MVP) ---
 
 
 @require_POST
@@ -142,13 +148,11 @@ def auth_email_otp(request: HttpRequest) -> JsonResponse:
     email = request.POST.get("email")
     code = _generate_code()
     expires = timezone.now() + timezone.timedelta(minutes=10)
-    # Rate limit by tenant+email
     rl_key = f"otp:{tenant_id}:{email}"
     if cache.get(rl_key):
         return JsonResponse({"ok": False, "error": "rate_limited"}, status=429)
     cache.set(rl_key, 1, timeout=60)
     otp = EmailOTP.objects.create(tenant_id=tenant_id, email=email, code=code, expires_at=expires)
-    # In production, send email via provider. For MVP/dev, return the code to caller for verification.
     return JsonResponse({"ok": True, "otp_id": otp.id, "dev_code": code})
 
 
@@ -199,7 +203,6 @@ def auth_voucher(request: HttpRequest) -> JsonResponse:
     user, _ = GuestUser.objects.get_or_create(tenant=tenant, mac=mac)
     session = Session.objects.create(user=user, site=site, mac=mac, policy_json={"type": "voucher"})
 
-    # Mark single-use (basic behavior)
     voucher.status = "used"
     voucher.used_by_mac = mac
     voucher.used_at = timezone.now()
@@ -207,13 +210,8 @@ def auth_voucher(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"ok": True, "session_id": session.id})
 
 
-# --- Ruckus WISPr (MVP stub) ---
-
-
 @require_POST
 def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
-    # Accepts Ruckus WISPr login form post. MVP: always success and return minimal response.
-    # In production, validate credentials or session token and authorize on controller.
     response_xml = """<?xml version='1.0'?>
 <WISPAccessGatewayParam>
   <ProxyResponse>
@@ -227,5 +225,4 @@ def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
 
 @require_POST
 def ruckus_coa_stub(request: HttpRequest) -> JsonResponse:
-    # Placeholder for Change-of-Authorization: in MVP, just acknowledge request
     return JsonResponse({"ok": True, "message": "CoA sent (stub)"})
