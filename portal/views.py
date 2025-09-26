@@ -64,7 +64,7 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
     return render(
         request,
         "home.html",
-        {"app_name": "Portal OpenWISP", "hero_zone_slug": hero_zone_slug},
+        {"app_name": "Sky Packets Portal", "hero_zone_slug": hero_zone_slug},
     )
 
 
