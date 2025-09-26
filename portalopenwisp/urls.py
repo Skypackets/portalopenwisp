@@ -17,8 +17,27 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from ads.views import CampaignViewSet, CreativeViewSet, EventViewSet, SlotViewSet
+from contentmgmt.views import PageViewSet
+from core.views import BrandViewSet, ControllerViewSet, SiteViewSet, SSIDViewSet, TenantViewSet
+
+router = DefaultRouter()
+router.register(r"tenants", TenantViewSet)
+router.register(r"brands", BrandViewSet)
+router.register(r"sites", SiteViewSet)
+router.register(r"ssids", SSIDViewSet)
+router.register(r"controllers", ControllerViewSet)
+router.register(r"pages", PageViewSet)
+router.register(r"campaigns", CampaignViewSet)
+router.register(r"creatives", CreativeViewSet)
+router.register(r"slots", SlotViewSet)
+router.register(r"events", EventViewSet)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("home.urls")),
+    path("", include("portal.urls")),
+    path("api/admin/", include(router.urls)),
 ]
