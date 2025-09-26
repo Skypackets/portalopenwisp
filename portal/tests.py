@@ -31,7 +31,44 @@ class PortalTests(TestCase):
         data = resp.json()
         self.assertEqual(len(data), 1)
 
+    def test_clickthrough_auth(self):
+        c = Client()
+        resp = c.post(
+            "/auth/clickthrough",
+            {"tenant_id": self.tenant.id, "site_id": self.site.id, "mac": "aa:bb:cc:dd:ee:ff"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
 
-from django.test import TestCase
+    def test_email_otp_flow(self):
+        c = Client()
+        start = c.post("/auth/email-otp", {"tenant_id": self.tenant.id, "email": "a@b.com"}).json()
+        verify = c.post(
+            "/auth/email-otp/verify",
+            {
+                "tenant_id": self.tenant.id,
+                "site_id": self.site.id,
+                "mac": "aa:bb:cc:dd:ee:11",
+                "email": "a@b.com",
+                "code": start["dev_code"],
+            },
+        )
+        self.assertEqual(verify.status_code, 200)
+        self.assertTrue(verify.json()["ok"])
 
-# Create your tests here.
+    def test_voucher_auth(self):
+        from authsvc.models import Voucher
+
+        Voucher.objects.create(tenant=self.tenant, code="ABC123")
+        c = Client()
+        resp = c.post(
+            "/auth/voucher",
+            {
+                "tenant_id": self.tenant.id,
+                "site_id": self.site.id,
+                "mac": "aa:bb:cc:dd:ee:22",
+                "code": "ABC123",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
