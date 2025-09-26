@@ -6,17 +6,22 @@
     <title>{{ app_name }}</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 2rem; }
-      .card { max-width: 640px; padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+      .card { max-width: 720px; padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
       h1 { margin: 0 0 0.5rem; font-size: 1.5rem; }
       p { margin: 0.25rem 0; color: #374151; }
       a { color: #2563eb; text-decoration: none; }
       a:hover { text-decoration: underline; }
+      .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+      .brand img { height: 40px; width: auto; border-radius: 4px; }
     </style>
     {% load adslots %}
   </head>
   <body>
     <main class="card">
-      <h1>{{ app_name }}</h1>
+      <div class="brand">
+        <img src="https://images.squarespace-cdn.com/content/v1/56e1e2cf0442625b15ee1e74/1465569551013-OB0BH1PWFIY8EUXECZC9/Final-Logo.png?format=1500w" alt="Sky Packets Logo" />
+        <h1>{{ app_name }}</h1>
+      </div>
       <p>Welcome to the Sky Packets portal.</p>
       <p>Customize your tenant’s splash pages and ad slots here.</p>
       <p><a href="/admin/">Go to Admin Console</a></p>
