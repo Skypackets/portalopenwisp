@@ -60,7 +60,12 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
             "script-src 'self' https: 'unsafe-inline'; style-src 'self' https: 'unsafe-inline'"
         )
         return resp
-    return render(request, "home.html", {"app_name": "Portal OpenWISP"})
+    hero_zone_slug = f"t{tenant.id}-s{site.id}-hero"
+    return render(
+        request,
+        "home.html",
+        {"app_name": "Portal OpenWISP", "hero_zone_slug": hero_zone_slug},
+    )
 
 
 @require_GET

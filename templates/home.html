@@ -12,6 +12,7 @@
       a { color: #2563eb; text-decoration: none; }
       a:hover { text-decoration: underline; }
     </style>
+    {% load adslots %}
   </head>
   <body>
     <main class="card">
@@ -19,6 +20,9 @@
       <p>Your Django portal is up and running.</p>
       <p>Edit <code>home/views.py</code> or this template to get started.</p>
       <p><a href="/admin/">Go to admin</a></p>
+      <hr />
+      <h3>Ad slot: hero</h3>
+      {% render_zone hero_zone_slug %}
     </main>
   </body>
   </html>
