@@ -133,14 +133,19 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Object storage / CDN
 DEFAULT_FILE_STORAGE = env(
-    "DEFAULT_FILE_STORAGE", default="django.core.files.storage.FileSystemStorage"
+    "DEFAULT_FILE_STORAGE",
+    default="django.core.files.storage.FileSystemStorage",
 )
 AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default=None)
 AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
 AWS_S3_SIGNATURE_VERSION = env("AWS_S3_SIGNATURE_VERSION", default="s3v4")
-AWS_QUERYSTRING_AUTH = env.bool("AWS_QUERYSTRING_AUTH", default=False)
+AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default=None)  # e.g., cdn.example.com
+AWS_QUERYSTRING_AUTH = env.bool("AWS_QUERYSTRING_AUTH", default=True)  # signed URLs
+
+ALLOW_UNAUTH_EVENTS = env.bool("ALLOW_UNAUTH_EVENTS", default=False)
 
 REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],

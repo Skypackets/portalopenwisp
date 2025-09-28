@@ -27,7 +27,28 @@
       <p><a href="/admin/">Go to Admin Console</a></p>
       <hr />
       <h3>Ad slot: hero</h3>
-      {% render_zone hero_zone_slug %}
+      <div id="ad-slot">
+        {% render_zone hero_zone_slug %}
+      </div>
+      <script>
+        (function(){
+          var slot = document.getElementById('ad-slot');
+          if(!slot) return;
+          var mac = new URLSearchParams(window.location.search).get('mac') || '';
+          var params = new URLSearchParams({
+            tenant_id: '{{ tenant_id|default:"" }}',
+            site_id: '{{ site_id|default:"" }}',
+            type: 'impression',
+            slot: 'hero',
+            mac: mac
+          });
+          try {
+            navigator.sendBeacon('/e', params);
+          } catch(e) {
+            fetch('/e', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: params});
+          }
+        })();
+      </script>
     </main>
   </body>
   </html>
