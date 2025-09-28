@@ -1,0 +1,54 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block content %}
+<style>
+.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:16px}
+.tile{display:flex;align-items:center;gap:12px;border:1px solid #e5e7eb;border-radius:12px;padding:14px;text-decoration:none;color:#111;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tile:hover{box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.tile .icon{width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-weight:600}
+.tile .label{font-size:14px}
+</style>
+
+<h1>Sky Packets Management</h1>
+<div class="tile-grid">
+  <a class="tile" href="{% url 'admin:core_tenant_changelist' %}">
+    <div class="icon">T</div>
+    <div class="label">Tenants</div>
+  </a>
+  <a class="tile" href="{% url 'admin:core_brand_changelist' %}">
+    <div class="icon">B</div>
+    <div class="label">Brands</div>
+  </a>
+  <a class="tile" href="{% url 'admin:core_site_changelist' %}">
+    <div class="icon">S</div>
+    <div class="label">Sites</div>
+  </a>
+  <a class="tile" href="{% url 'admin:core_ssid_changelist' %}">
+    <div class="icon">Wi</div>
+    <div class="label">SSIDs</div>
+  </a>
+  <a class="tile" href="{% url 'admin:core_controller_changelist' %}">
+    <div class="icon">C</div>
+    <div class="label">Controllers</div>
+  </a>
+  <a class="tile" href="{% url 'admin:contentmgmt_page_changelist' %}">
+    <div class="icon">P</div>
+    <div class="label">Pages</div>
+  </a>
+  <a class="tile" href="{% url 'admin:ads_campaign_changelist' %}">
+    <div class="icon">Ad</div>
+    <div class="label">Campaigns</div>
+  </a>
+  <a class="tile" href="{% url 'admin:ads_creative_changelist' %}">
+    <div class="icon">Cr</div>
+    <div class="label">Creatives</div>
+  </a>
+  <a class="tile" href="{% url 'admin:ads_event_changelist' %}">
+    <div class="icon">Ev</div>
+    <div class="label">Events</div>
+  </a>
+</div>
+
+{% endblock %}
+
