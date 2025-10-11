@@ -132,6 +132,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Object storage / CDN
 DEFAULT_FILE_STORAGE = env(
@@ -146,6 +147,9 @@ AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default=None)  # e.g., cdn.ex
 AWS_QUERYSTRING_AUTH = env.bool("AWS_QUERYSTRING_AUTH", default=True)  # signed URLs
 
 ALLOW_UNAUTH_EVENTS = env.bool("ALLOW_UNAUTH_EVENTS", default=False)
+
+# Controller integrations
+CONTROLLERS_TEST_MODE = env.bool("CONTROLLERS_TEST_MODE", default=True)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

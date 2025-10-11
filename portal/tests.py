@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 
 from contentmgmt.models import Page
-from core.models import Brand, Site, Tenant
+from core.models import Brand, Controller, SSID, Site, Tenant
 
 
 class PortalTests(TestCase):
@@ -18,6 +18,13 @@ class PortalTests(TestCase):
             status="published",
             html="<html><body>P1</body></html>",
         )
+        # Controller + SSID for phase 4 tests (test mode)
+        self.controller = Controller.objects.create(
+            tenant=self.tenant,
+            type="ruckus_sz",
+            base_url="https://example.invalid",
+        )
+        self.ssid = SSID.objects.create(site=self.site, name="GuestWiFi", controller=self.controller)
 
     def test_splash_endpoint(self):
         c = Client()
@@ -83,3 +90,33 @@ class PortalTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["ok"])
+
+    def test_wispr_login_success(self):
+        c = Client()
+        resp = c.post(
+            "/ruckus/wispr/login",
+            {
+                "tenant_id": self.tenant.id,
+                "site_id": self.site.id,
+                "ssid": self.ssid.name,
+                "mac": "aa:bb:cc:dd:ee:33",
+                "minutes": 30,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Login Succeeded", resp.content)
+
+    def test_coa_success(self):
+        c = Client()
+        resp = c.post(
+            "/ruckus/coa",
+            {
+                "tenant_id": self.tenant.id,
+                "site_id": self.site.id,
+                "ssid": self.ssid.name,
+                "mac": "aa:bb:cc:dd:ee:33",
+                "reason": "test",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])        

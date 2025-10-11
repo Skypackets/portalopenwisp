@@ -21,7 +21,8 @@ from django.views.decorators.http import require_GET, require_POST
 from ads.models import Campaign, Event
 from authsvc.models import EmailOTP, GuestUser, Session, Voucher
 from contentmgmt.models import Page
-from core.models import Site, Tenant
+from core.models import SSID, Site, Tenant
+from .clients import get_client
 
 
 @require_GET
@@ -256,7 +257,41 @@ def auth_voucher(request: HttpRequest) -> JsonResponse:
 
 @require_POST
 def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
-    response_xml = """<?xml version='1.0'?>
+    tenant_id = int(request.POST.get("tenant_id", 0))
+    site_id = int(request.POST.get("site_id", 0))
+    ssid_name = request.POST.get("ssid", "")
+    mac = request.POST.get("mac", "")
+    session_minutes = int(request.POST.get("minutes", 60))
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        site = Site.objects.get(id=site_id, tenant=tenant)
+        ssid = SSID.objects.get(site=site, name=ssid_name)
+        controller = ssid.controller
+    except (Tenant.DoesNotExist, Site.DoesNotExist, SSID.DoesNotExist):
+        response_xml = """<?xml version='1.0'?>
+<WISPAccessGatewayParam>
+  <ProxyResponse>
+    <MessageType>120</MessageType>
+    <ResponseCode>255</ResponseCode>
+    <ReplyMessage>Invalid parameters</ReplyMessage>
+  </ProxyResponse>
+</WISPAccessGatewayParam>"""
+        return HttpResponse(response_xml, content_type="application/xml", status=400)
+
+    client = get_client(controller.type, controller.base_url, controller.api_key, controller.api_secret, controller.metadata)
+    result = client.authorize_mac(ssid_name, mac, session_minutes * 60_000)
+
+    if result.ok:
+        # Create or update session
+        user, _ = GuestUser.objects.get_or_create(tenant=tenant, mac=mac)
+        Session.objects.create(
+            user=user,
+            site=site,
+            mac=mac,
+            policy_json={"type": "controller", "ssid": ssid_name, "minutes": session_minutes},
+        )
+        response_xml = """<?xml version='1.0'?>
 <WISPAccessGatewayParam>
   <ProxyResponse>
     <MessageType>120</MessageType>
@@ -264,12 +299,42 @@ def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
     <ReplyMessage>Login Succeeded</ReplyMessage>
   </ProxyResponse>
 </WISPAccessGatewayParam>"""
-    return HttpResponse(response_xml, content_type="application/xml")
+        return HttpResponse(response_xml, content_type="application/xml")
+    else:
+        response_xml = f"""<?xml version='1.0'?>
+<WISPAccessGatewayParam>
+  <ProxyResponse>
+    <MessageType>120</MessageType>
+    <ResponseCode>255</ResponseCode>
+    <ReplyMessage>{result.message or 'Login Failed'}</ReplyMessage>
+  </ProxyResponse>
+</WISPAccessGatewayParam>"""
+        return HttpResponse(response_xml, content_type="application/xml", status=403)
 
 
 @require_POST
 def ruckus_coa_stub(request: HttpRequest) -> JsonResponse:
-    return JsonResponse({"ok": True, "message": "CoA sent (stub)"})
+    tenant_id = int(request.POST.get("tenant_id", 0))
+    site_id = int(request.POST.get("site_id", 0))
+    ssid_name = request.POST.get("ssid", "")
+    mac = request.POST.get("mac", "")
+    reason = request.POST.get("reason", "")
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        site = Site.objects.get(id=site_id, tenant=tenant)
+        ssid = SSID.objects.get(site=site, name=ssid_name)
+        controller = ssid.controller
+    except (Tenant.DoesNotExist, Site.DoesNotExist, SSID.DoesNotExist):
+        return JsonResponse({"ok": False, "error": "invalid_params"}, status=400)
+
+    client = get_client(controller.type, controller.base_url, controller.api_key, controller.api_secret, controller.metadata)
+    ok = client.disconnect_mac(ssid_name, mac, message=reason)
+    if ok:
+        # Optionally end active session for mac
+        Session.objects.filter(site=site, mac=mac, end_at__isnull=True).update(end_at=timezone.now())
+        return JsonResponse({"ok": True, "message": "CoA sent"})
+    return JsonResponse({"ok": False, "error": "controller_failed"}, status=502)
 
 
 @require_GET
