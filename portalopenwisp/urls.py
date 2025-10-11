@@ -20,9 +20,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from ads.views import CampaignViewSet, CreativeViewSet, EventViewSet, SlotViewSet
+from analytics import views as analytics_views
 from contentmgmt.views import PageViewSet
 from core.views import BrandViewSet, ControllerViewSet, SiteViewSet, SSIDViewSet, TenantViewSet
-from analytics import views as analytics_views
 
 router = DefaultRouter()
 router.register(r"tenants", TenantViewSet)

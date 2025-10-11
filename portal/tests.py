@@ -1,10 +1,9 @@
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 
-from contentmgmt.models import Page
-from core.models import Brand, Controller, SSID, Site, Tenant
-from ads.decision import decide_ad, record_impression_for_mac
-from contentmgmt.models import PageRevision
+from ads.decision import decide_ad  # noqa: F401 imported for future tests
+from contentmgmt.models import Page, PageRevision
+from core.models import SSID, Brand, Controller, Site, Tenant
 
 
 class PortalTests(TestCase):
@@ -26,11 +25,15 @@ class PortalTests(TestCase):
             type="ruckus_sz",
             base_url="https://example.invalid",
         )
-        self.ssid = SSID.objects.create(site=self.site, name="GuestWiFi", controller=self.controller)
+        self.ssid = SSID.objects.create(
+            site=self.site, name="GuestWiFi", controller=self.controller
+        )
 
     def test_splash_endpoint(self):
         c = Client()
-        resp = c.get(f"/p/{self.tenant.id}/{self.site.id}")
+        resp = c.get(
+            f"/p/{self.tenant.id}/{self.site.id}"
+        )
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"P1", resp.content)
 
@@ -147,12 +150,15 @@ class PortalTests(TestCase):
         self.assertIsNone(resp.json().get("creative"))
 
         # Validate daily aggregates recomputation includes impressions
-        from analytics.tasks import recompute_daily_for
         from datetime import date
+
         from analytics.models import DailyAggregate
+        from analytics.tasks import recompute_daily_for
 
         recompute_daily_for(date.today())
-        agg = DailyAggregate.objects.get(date=date.today(), tenant_id=self.tenant.id, site_id=self.site.id)
+        agg = DailyAggregate.objects.get(
+            date=date.today(), tenant_id=self.tenant.id, site_id=self.site.id
+        )
         self.assertGreaterEqual(agg.impressions, 3)
 
     def test_coa_success(self):
@@ -168,7 +174,7 @@ class PortalTests(TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["ok"])        
+        self.assertTrue(resp.json()["ok"])
 
     def test_page_builder_preview_publish_revision(self):
         # Create staff and page for builder
@@ -191,13 +197,17 @@ class PortalTests(TestCase):
         self.assertEqual(resp.status_code, 201)
         page_id = resp.json()["id"]
         # Save blocks
-        blocks = [{"type":"hero","title":"Hi","subtitle":"There"}]
-        resp = c.post(f"/api/admin/pages/{page_id}/save-blocks/", data={"blocks": blocks}, content_type="application/json")
+        blocks = [{"type": "hero", "title": "Hi", "subtitle": "There"}]
+        resp = c.post(
+            f"/api/admin/pages/{page_id}/save-blocks/",
+            data={"blocks": blocks},
+            content_type="application/json",
+        )
         self.assertEqual(resp.status_code, 200)
         # Preview
         resp = c.get(f"/api/admin/pages/{page_id}/preview/")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("<section", resp.json()["html"]) 
+        self.assertIn("<section", resp.json()["html"])
         # Publish now
         resp = c.post(f"/api/admin/pages/{page_id}/publish/", data={})
         self.assertEqual(resp.status_code, 200)

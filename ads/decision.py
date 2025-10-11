@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
-from django.core.cache import cache
 from django.conf import settings
+from django.core.cache import cache
 
 from .models import Campaign, Creative
 

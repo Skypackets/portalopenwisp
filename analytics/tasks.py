@@ -6,6 +6,7 @@ from django.db import models
 from django.db.models import Count
 
 from ads.models import Event
+
 from .models import DailyAggregate
 
 

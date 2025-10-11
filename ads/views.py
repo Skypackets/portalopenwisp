@@ -29,7 +29,11 @@ class CreativeViewSet(viewsets.ModelViewSet):
         tenant_id = _get_request_tenant_id(self.request)
         if tenant_id:
             qs = qs.filter(campaign__tenant_id=tenant_id)
-        campaign_id = self.request.query_params.get("campaign_id") if hasattr(self.request, "query_params") else None
+        campaign_id = (
+            self.request.query_params.get("campaign_id")
+            if hasattr(self.request, "query_params")
+            else None
+        )
         if campaign_id and campaign_id.isdigit():
             qs = qs.filter(campaign_id=int(campaign_id))
         return qs
@@ -44,7 +48,11 @@ class SlotViewSet(viewsets.ModelViewSet):
         tenant_id = _get_request_tenant_id(self.request)
         if tenant_id:
             qs = qs.filter(page__tenant_id=tenant_id)
-        page_id = self.request.query_params.get("page_id") if hasattr(self.request, "query_params") else None
+        page_id = (
+            self.request.query_params.get("page_id")
+            if hasattr(self.request, "query_params")
+            else None
+        )
         if page_id and page_id.isdigit():
             qs = qs.filter(page_id=int(page_id))
         return qs

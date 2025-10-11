@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from django.db.models import Sum
 from rest_framework import decorators, response, status
 
-from ads.models import Event
+
 from .models import DailyAggregate
 
 

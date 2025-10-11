@@ -19,7 +19,13 @@ class AuthResult:
 
 
 class BaseControllerClient:
-    def __init__(self, base_url: str, api_key: str = "", api_secret: str = "", metadata: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str = "",
+        api_secret: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.api_secret = api_secret
@@ -73,7 +79,9 @@ class CambiumCnMaestroClient(BaseControllerClient):
         try:
             # Placeholder for cnMaestro API
             ts = int(time.time())
-            signature = hmac.new(self.api_secret.encode(), f"{mac}:{ts}".encode(), hashlib.sha256).hexdigest()
+            signature = hmac.new(
+                self.api_secret.encode(), f"{mac}:{ts}".encode(), hashlib.sha256
+            ).hexdigest()
             resp = requests.post(
                 f"{self.base_url}/guest/authorize",
                 json={
@@ -105,7 +113,13 @@ class CambiumCnMaestroClient(BaseControllerClient):
             return False
 
 
-def get_client(controller_type: str, base_url: str, api_key: str, api_secret: str, metadata: Optional[Dict[str, Any]] = None) -> BaseControllerClient:
+def get_client(
+    controller_type: str,
+    base_url: str,
+    api_key: str,
+    api_secret: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> BaseControllerClient:
     if controller_type == "ruckus_sz":
         return RuckusSmartZoneClient(base_url, api_key, api_secret, metadata)
     if controller_type == "cambium_cnmaestro":

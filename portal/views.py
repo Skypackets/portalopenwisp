@@ -7,22 +7,17 @@ import urllib.parse
 import bleach
 from django.conf import settings
 from django.core.cache import cache
-from django.http import (
-    Http404,
-    HttpRequest,
-    HttpResponse,
-    HttpResponseRedirect,
-    JsonResponse,
-)
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from ads.models import Campaign, Event
 from ads.decision import decide_ad, record_impression_for_mac
+from ads.models import Event
 from authsvc.models import EmailOTP, GuestUser, Session, Voucher
 from contentmgmt.models import Page
 from core.models import SSID, Site, Tenant
+
 from .clients import get_client
 
 
@@ -45,7 +40,13 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
     Event.objects.create(tenant=tenant, site=site, type="splash_view", payload_json={})
 
     if page.html:
-        allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {"img", "video", "source", "link", "meta"}
+        allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {
+            "img",
+            "video",
+            "source",
+            "link",
+            "meta",
+        }
         sanitized = bleach.clean(
             page.html,
             tags=allowed_tags,
@@ -108,7 +109,6 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
         }
         # Provide a first-party tracking redirect URL
         try:
-            encoded_target = urllib.parse.quote(creative.click_url, safe="")
             tracking_qs = urllib.parse.urlencode(
                 {
                     "tenant_id": tenant.id,
@@ -279,7 +279,13 @@ def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
 </WISPAccessGatewayParam>"""
         return HttpResponse(response_xml, content_type="application/xml", status=400)
 
-    client = get_client(controller.type, controller.base_url, controller.api_key, controller.api_secret, controller.metadata)
+    client = get_client(
+        controller.type,
+        controller.base_url,
+        controller.api_key,
+        controller.api_secret,
+        controller.metadata,
+    )
     result = client.authorize_mac(ssid_name, mac, session_minutes * 60_000)
 
     if result.ok:
@@ -328,11 +334,19 @@ def ruckus_coa_stub(request: HttpRequest) -> JsonResponse:
     except (Tenant.DoesNotExist, Site.DoesNotExist, SSID.DoesNotExist):
         return JsonResponse({"ok": False, "error": "invalid_params"}, status=400)
 
-    client = get_client(controller.type, controller.base_url, controller.api_key, controller.api_secret, controller.metadata)
+    client = get_client(
+        controller.type,
+        controller.base_url,
+        controller.api_key,
+        controller.api_secret,
+        controller.metadata,
+    )
     ok = client.disconnect_mac(ssid_name, mac, message=reason)
     if ok:
         # Optionally end active session for mac
-        Session.objects.filter(site=site, mac=mac, end_at__isnull=True).update(end_at=timezone.now())
+        Session.objects.filter(site=site, mac=mac, end_at__isnull=True).update(
+            end_at=timezone.now()
+        )
         return JsonResponse({"ok": True, "message": "CoA sent"})
     return JsonResponse({"ok": False, "error": "controller_failed"}, status=502)
 
@@ -353,20 +367,23 @@ def redirect_click(request: HttpRequest) -> HttpResponse:
 
     try:
         tenant = Tenant.objects.get(id=int(tenant_id)) if tenant_id else None
-        site = Site.objects.get(id=int(site_id), tenant=tenant) if tenant and site_id else None
+        site = (
+            Site.objects.get(id=int(site_id), tenant=tenant) if tenant and site_id else None
+        )
     except (Tenant.DoesNotExist, Site.DoesNotExist):
         tenant = None
         site = None
 
     if tenant and site:
         try:
+            cid = int(creative_id) if (creative_id and creative_id.isdigit()) else None
             Event.objects.create(
                 tenant=tenant,
                 site=site,
                 type="click",
                 payload_json={
                     "slot": slot,
-                    "creative_id": int(creative_id) if (creative_id and creative_id.isdigit()) else None,
+                    "creative_id": cid,
                     "mac": mac,
                     "target": target,
                 },

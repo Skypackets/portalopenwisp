@@ -5,7 +5,9 @@ from django.shortcuts import render
 
 
 def home(request):
-    return render(request, "home.html", {"app_name": "Sky Packets Portal", "hero_zone_slug": "hero"})
+    return render(
+        request, "home.html", {"app_name": "Sky Packets Portal", "hero_zone_slug": "hero"}
+    )
 
 
 @staff_member_required

@@ -2,10 +2,10 @@ from rest_framework import decorators, response, status, viewsets
 
 from core.views import _get_request_tenant_id
 
-from .models import Page, PageRevision
-from .serializers import PageRevisionSerializer, PageSerializer
-from .utils import publish_page_assets
 from .builder import render_blocks
+from .models import Page, PageRevision
+from .serializers import PageSerializer
+from .utils import publish_page_assets
 
 
 class PageViewSet(viewsets.ModelViewSet):
