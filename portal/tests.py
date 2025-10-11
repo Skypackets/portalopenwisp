@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.test import Client, TestCase
 
 from contentmgmt.models import Page
@@ -25,8 +26,13 @@ class PortalTests(TestCase):
         self.assertIn(b"P1", resp.content)
 
     def test_admin_api_tenants(self):
+        # Authenticate as staff per DRF IsAdminUser default permissions
+        staff = User.objects.create_user(username="admin", email="a@b.com", password="x")
+        staff.is_staff = True
+        staff.save()
         c = Client()
-        resp = c.get("/api/admin/tenants/")
+        c.login(username="admin", password="x")
+        resp = c.get("/api/admin/tenants/", HTTP_X_TENANT_ID=str(self.tenant.id))
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(len(data), 1)
@@ -41,8 +47,13 @@ class PortalTests(TestCase):
         self.assertTrue(resp.json()["ok"])
 
     def test_email_otp_flow(self):
+        from authsvc.models import EmailOTP
+
         c = Client()
         start = c.post("/auth/email-otp", {"tenant_id": self.tenant.id, "email": "a@b.com"}).json()
+        code = start.get("dev_code")
+        if not code:
+            code = EmailOTP.objects.get(id=start["otp_id"]).code
         verify = c.post(
             "/auth/email-otp/verify",
             {
@@ -50,7 +61,7 @@ class PortalTests(TestCase):
                 "site_id": self.site.id,
                 "mac": "aa:bb:cc:dd:ee:11",
                 "email": "a@b.com",
-                "code": start["dev_code"],
+                "code": code,
             },
         )
         self.assertEqual(verify.status_code, 200)
