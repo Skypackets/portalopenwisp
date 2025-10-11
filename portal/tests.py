@@ -4,6 +4,7 @@ from django.test import Client, TestCase
 from contentmgmt.models import Page
 from core.models import Brand, Controller, SSID, Site, Tenant
 from ads.decision import decide_ad, record_impression_for_mac
+from contentmgmt.models import PageRevision
 
 
 class PortalTests(TestCase):
@@ -168,3 +169,37 @@ class PortalTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["ok"])        
+
+    def test_page_builder_preview_publish_revision(self):
+        # Create staff and page for builder
+        staff = User.objects.create_user(username="admin3", email="c@b.com", password="x")
+        staff.is_staff = True
+        staff.save()
+        c = Client()
+        c.login(username="admin3", password="x")
+        # Create a draft page
+        resp = c.post(
+            "/api/admin/pages/",
+            {
+                "tenant": self.tenant.id,
+                "brand": self.brand.id,
+                "site": self.site.id,
+                "name": "Builder Page",
+                "status": "draft",
+            },
+        )
+        self.assertEqual(resp.status_code, 201)
+        page_id = resp.json()["id"]
+        # Save blocks
+        blocks = [{"type":"hero","title":"Hi","subtitle":"There"}]
+        resp = c.post(f"/api/admin/pages/{page_id}/save-blocks/", data={"blocks": blocks}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        # Preview
+        resp = c.get(f"/api/admin/pages/{page_id}/preview/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("<section", resp.json()["html"]) 
+        # Publish now
+        resp = c.post(f"/api/admin/pages/{page_id}/publish/", data={})
+        self.assertEqual(resp.status_code, 200)
+        # Revision created
+        self.assertEqual(PageRevision.objects.filter(page_id=page_id).count(), 1)
