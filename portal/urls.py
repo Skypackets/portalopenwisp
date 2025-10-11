@@ -14,4 +14,6 @@ urlpatterns = [
     # Ruckus WISPr
     path("ruckus/wispr/login", views.ruckus_wispr_login, name="ruckus-wispr-login"),
     path("ruckus/coa", views.ruckus_coa_stub, name="ruckus-coa"),
+    # Click tracking redirect
+    path("r", views.redirect_click, name="redirect-click"),
 ]

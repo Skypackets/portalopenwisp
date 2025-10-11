@@ -63,12 +63,18 @@ class Event(TimeStampedModel):
         ("impression", "Impression"),
         ("click", "Click"),
         ("splash_view", "Splash View"),
+        ("session_start", "Session Start"),
     )
     ts = models.DateTimeField(default=timezone.now)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
     site = models.ForeignKey(Site, on_delete=models.CASCADE)
     type = models.CharField(max_length=32, choices=TYPE_CHOICES)
     payload_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["tenant", "site", "type", "ts"], name="event_tst_idx"),
+        ]
 
 
 # Create your models here.
