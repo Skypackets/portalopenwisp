@@ -151,6 +151,10 @@ ALLOW_UNAUTH_EVENTS = env.bool("ALLOW_UNAUTH_EVENTS", default=False)
 # Controller integrations
 CONTROLLERS_TEST_MODE = env.bool("CONTROLLERS_TEST_MODE", default=True)
 
+# Ads decisioning
+ADS_PACING_SECONDS = env.int("ADS_PACING_SECONDS", default=(0 if DEBUG else 10))
+ADS_FREQ_CAP_PER_HOUR = env.int("ADS_FREQ_CAP_PER_HOUR", default=3)
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",

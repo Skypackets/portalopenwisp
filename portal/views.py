@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from ads.models import Campaign, Event
+from ads.decision import decide_ad, record_impression_for_mac
 from authsvc.models import EmailOTP, GuestUser, Session, Voucher
 from contentmgmt.models import Page
 from core.models import SSID, Site, Tenant
@@ -92,10 +93,8 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
     except (Tenant.DoesNotExist, Site.DoesNotExist) as exc:
         raise Http404 from exc
 
-    campaign = (
-        Campaign.objects.filter(tenant=tenant, status="active").order_by("-updated_at").first()
-    )
-    creative = campaign.creatives.order_by("-updated_at").first() if campaign else None
+    decision = decide_ad(tenant.id, site.id, slot or "hero", request.GET.get("mac", ""))
+    creative = decision.creative
 
     payload = {"creative": None}
     if creative is not None:
@@ -130,9 +129,10 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
             payload_json={
                 "slot": slot,
                 "creative_id": creative.id,
-                "campaign_id": campaign.id,
+                "campaign_id": getattr(creative, "campaign_id", None),
             },
         )
+        record_impression_for_mac(tenant.id, site.id, slot or "hero", request.GET.get("mac", ""))
     return JsonResponse(payload)
 
 

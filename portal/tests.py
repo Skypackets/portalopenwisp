@@ -3,6 +3,7 @@ from django.test import Client, TestCase
 
 from contentmgmt.models import Page
 from core.models import Brand, Controller, SSID, Site, Tenant
+from ads.decision import decide_ad, record_impression_for_mac
 
 
 class PortalTests(TestCase):
@@ -105,6 +106,53 @@ class PortalTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Login Succeeded", resp.content)
+
+    def test_decision_frequency_cap(self):
+        # First three decisions should return a creative; fourth should be capped
+        c = Client()
+        mac = "aa:bb:cc:dd:ee:44"
+        # Create an active campaign/creative via API (auth as staff)
+        staff = User.objects.create_user(username="admin2", email="b@b.com", password="x")
+        staff.is_staff = True
+        staff.save()
+        c.login(username="admin2", password="x")
+        # Create a campaign and creative
+        resp = c.post(
+            "/api/admin/campaigns/",
+            {"tenant": self.tenant.id, "name": "Camp1", "status": "active"},
+        )
+        self.assertEqual(resp.status_code, 201)
+        camp_id = resp.json()["id"]
+        resp = c.post(
+            "/api/admin/creatives/",
+            {
+                "campaign": camp_id,
+                "type": "image",
+                "asset_url": "https://example.com/a.png",
+                "width": 300,
+                "height": 250,
+                "click_url": "https://example.com",
+            },
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        for i in range(3):
+            resp = c.get(f"/p/{self.tenant.id}/{self.site.id}/ads?slot=hero&mac={mac}")
+            self.assertEqual(resp.status_code, 200)
+            self.assertIsNotNone(resp.json().get("creative"))
+        # Fourth request should be capped (no creative)
+        resp = c.get(f"/p/{self.tenant.id}/{self.site.id}/ads?slot=hero&mac={mac}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.json().get("creative"))
+
+        # Validate daily aggregates recomputation includes impressions
+        from analytics.tasks import recompute_daily_for
+        from datetime import date
+        from analytics.models import DailyAggregate
+
+        recompute_daily_for(date.today())
+        agg = DailyAggregate.objects.get(date=date.today(), tenant_id=self.tenant.id, site_id=self.site.id)
+        self.assertGreaterEqual(agg.impressions, 3)
 
     def test_coa_success(self):
         c = Client()
