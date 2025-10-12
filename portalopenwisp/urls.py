@@ -42,4 +42,5 @@ urlpatterns = [
     path("", include("portal.urls")),
     path("api/admin/", include(router.urls)),
     path("api/analytics/daily", analytics_views.daily_summary, name="analytics-daily"),
+    path("healthz", lambda request: __import__("django.http").http.HttpResponse("ok")),
 ]
