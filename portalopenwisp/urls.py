@@ -20,6 +20,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from ads.views import CampaignViewSet, CreativeViewSet, EventViewSet, SlotViewSet
+from analytics import views as analytics_views
 from contentmgmt.views import PageViewSet
 from core.views import BrandViewSet, ControllerViewSet, SiteViewSet, SSIDViewSet, TenantViewSet
 
@@ -40,4 +41,6 @@ urlpatterns = [
     path("", include("home.urls")),
     path("", include("portal.urls")),
     path("api/admin/", include(router.urls)),
+    path("api/analytics/daily", analytics_views.daily_summary, name="analytics-daily"),
+    path("healthz", lambda request: __import__("django.http").http.HttpResponse("ok")),
 ]

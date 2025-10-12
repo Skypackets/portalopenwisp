@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page Builder</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto; margin: 1rem; display: grid; grid-template-columns: 360px 1fr; gap: 16px; }
+      .panel { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
+      label { display:block; margin-top: 8px; font-size: 12px; color: #374151; }
+      input, select, textarea { width: 100%; padding: 6px 8px; margin-top: 4px; }
+      .btn { background: #2563eb; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+      #preview { background: #fafafa; min-height: 400px; }
+      .row { display: flex; gap: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h3>Blocks</h3>
+      <div>
+        <select id="block-type">
+          <option value="hero">Hero</option>
+          <option value="paragraph">Paragraph</option>
+          <option value="button">Button</option>
+          <option value="ad_slot">Ad Slot</option>
+        </select>
+        <button class="btn" id="add-block">Add</button>
+      </div>
+      <label>Blocks JSON</label>
+      <textarea id="blocks" rows="16"></textarea>
+      <div class="row">
+        <button class="btn" id="save">Save</button>
+        <button class="btn" id="preview-btn">Preview</button>
+        <button class="btn" id="publish">Publish</button>
+      </div>
+      <label>Schedule publish at (ISO)</label>
+      <input type="text" id="publish_at" placeholder="2025-10-01T12:00:00Z" />
+    </div>
+    <div class="panel" id="preview"></div>
+
+    <script>
+      const pageId = new URLSearchParams(location.search).get('page_id');
+      const blocksTextarea = document.getElementById('blocks');
+      document.getElementById('add-block').onclick = () => {
+        const t = document.getElementById('block-type').value;
+        let block = {type: t};
+        if (t === 'hero') block = {type:'hero', title:'Title', subtitle:'Subtitle'};
+        if (t === 'paragraph') block = {type:'paragraph', text:'Lorem ipsum'};
+        if (t === 'button') block = {type:'button', label:'Click', href:'#'};
+        if (t === 'ad_slot') block = {type:'ad_slot', slot:'hero'};
+        let arr = [];
+        try { arr = JSON.parse(blocksTextarea.value || '[]'); } catch (e) {}
+        arr.push(block);
+        blocksTextarea.value = JSON.stringify(arr, null, 2);
+      };
+      document.getElementById('save').onclick = async () => {
+        const resp = await fetch(`/api/admin/pages/${pageId}/save-blocks/`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({blocks: JSON.parse(blocksTextarea.value || '[]')})});
+        alert('Saved: ' + resp.status);
+      };
+      document.getElementById('preview-btn').onclick = async () => {
+        const resp = await fetch(`/api/admin/pages/${pageId}/preview/`);
+        const data = await resp.json();
+        document.getElementById('preview').innerHTML = data.html || '';
+      };
+      document.getElementById('publish').onclick = async () => {
+        if (document.getElementById('publish_at').value) {
+          // schedule
+          const at = document.getElementById('publish_at').value;
+          // Save schedule on page
+          const resp = await fetch(`/api/admin/pages/${pageId}/`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({publish_at: at, status:'draft'})});
+          alert('Scheduled: ' + resp.status);
+        } else {
+          const resp = await fetch(`/api/admin/pages/${pageId}/publish/`, {method:'POST'});
+          alert('Published: ' + resp.status);
+        }
+      };
+    </script>
+  </body>
+</html>

@@ -31,6 +31,7 @@ class Page(TimeStampedModel):
     rev = models.CharField(max_length=64, default="v1")
     publish_at = models.DateTimeField(null=True, blank=True)
     meta_json = models.JSONField(default=dict, blank=True)
+    blocks_json = models.JSONField(default=list, blank=True)
 
     class Meta:
         indexes = [
@@ -39,6 +40,15 @@ class Page(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.tenant_id}:{self.name}:{self.rev}"
+
+
+class PageRevision(TimeStampedModel):
+    page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name="revisions")
+    rev = models.CharField(max_length=64)
+    html = models.TextField(blank=True, default="")
+    css = models.TextField(blank=True, default="")
+    js = models.TextField(blank=True, default="")
+    blocks_json = models.JSONField(default=list, blank=True)
 
 
 # Create your models here.

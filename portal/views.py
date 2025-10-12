@@ -2,19 +2,23 @@ import hashlib
 import hmac
 import random
 import string
+import urllib.parse
 
 import bleach
 from django.conf import settings
 from django.core.cache import cache
-from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from ads.models import Campaign, Event
+from ads.decision import decide_ad, record_impression_for_mac
+from ads.models import Event
 from authsvc.models import EmailOTP, GuestUser, Session, Voucher
 from contentmgmt.models import Page
-from core.models import Site, Tenant
+from core.models import SSID, Site, Tenant
+
+from .clients import get_client
 
 
 @require_GET
@@ -36,10 +40,16 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
     Event.objects.create(tenant=tenant, site=site, type="splash_view", payload_json={})
 
     if page.html:
+        allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {
+            "img",
+            "video",
+            "source",
+            "link",
+            "meta",
+        }
         sanitized = bleach.clean(
             page.html,
-            tags=bleach.sanitizer.ALLOWED_TAGS
-            | {"img", "video", "source", "link", "meta", "script"},
+            tags=allowed_tags,
             attributes={
                 "*": [
                     "class",
@@ -57,8 +67,9 @@ def splash(request: HttpRequest, tenant_id: int, site_id: int) -> HttpResponse:
         )
         resp = HttpResponse(sanitized)
         resp["Content-Security-Policy"] = (
-            "default-src 'self' https: data:; img-src 'self' https: data:; "
-            "script-src 'self' https: 'unsafe-inline'; style-src 'self' https: 'unsafe-inline'"
+            "default-src 'self'; img-src 'self' https: data:; "
+            "script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; "
+            "frame-src 'self' https:;"
         )
         return resp
     hero_zone_slug = f"t{tenant.id}-s{site.id}-hero"
@@ -83,10 +94,8 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
     except (Tenant.DoesNotExist, Site.DoesNotExist) as exc:
         raise Http404 from exc
 
-    campaign = (
-        Campaign.objects.filter(tenant=tenant, status="active").order_by("-updated_at").first()
-    )
-    creative = campaign.creatives.order_by("-updated_at").first() if campaign else None
+    decision = decide_ad(tenant.id, site.id, slot or "hero", request.GET.get("mac", ""))
+    creative = decision.creative
 
     payload = {"creative": None}
     if creative is not None:
@@ -98,6 +107,21 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
             "height": creative.height,
             "slot": slot,
         }
+        # Provide a first-party tracking redirect URL
+        try:
+            tracking_qs = urllib.parse.urlencode(
+                {
+                    "tenant_id": tenant.id,
+                    "site_id": site.id,
+                    "slot": slot or "",
+                    "creative_id": creative.id,
+                    "u": creative.click_url,
+                }
+            )
+            payload["creative"]["tracking_url"] = f"/r?{tracking_qs}"
+        except Exception:
+            # do not block rendering on encoding issues
+            pass
         Event.objects.create(
             tenant=tenant,
             site=site,
@@ -105,9 +129,10 @@ def ad_decision(request: HttpRequest, tenant_id: int, site_id: int) -> JsonRespo
             payload_json={
                 "slot": slot,
                 "creative_id": creative.id,
-                "campaign_id": campaign.id,
+                "campaign_id": getattr(creative, "campaign_id", None),
             },
         )
+        record_impression_for_mac(tenant.id, site.id, slot or "hero", request.GET.get("mac", ""))
     return JsonResponse(payload)
 
 
@@ -164,7 +189,10 @@ def auth_email_otp(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"ok": False, "error": "rate_limited"}, status=429)
     cache.set(rl_key, 1, timeout=60)
     otp = EmailOTP.objects.create(tenant_id=tenant_id, email=email, code=code, expires_at=expires)
-    return JsonResponse({"ok": True, "otp_id": otp.id, "dev_code": code})
+    payload = {"ok": True, "otp_id": otp.id}
+    if settings.DEBUG:
+        payload["dev_code"] = code
+    return JsonResponse(payload)
 
 
 @require_POST
@@ -206,24 +234,70 @@ def auth_voucher(request: HttpRequest) -> JsonResponse:
     tenant = Tenant.objects.get(id=tenant_id)
     site = Site.objects.get(id=site_id, tenant=tenant)
 
+    from django.db import transaction
     try:
-        voucher = Voucher.objects.get(tenant=tenant, code=code, status="active")
+        with transaction.atomic():
+            voucher = (
+                Voucher.objects.select_for_update()
+                .get(tenant=tenant, code=code, status="active")
+            )
+            # mark redeemed within the transaction
+            voucher.status = "used"
+            voucher.used_by_mac = mac
+            voucher.used_at = timezone.now()
+            voucher.save(update_fields=["status", "used_by_mac", "used_at"])
     except Voucher.DoesNotExist:
         return JsonResponse({"ok": False, "error": "invalid_voucher"}, status=400)
 
     user, _ = GuestUser.objects.get_or_create(tenant=tenant, mac=mac)
     session = Session.objects.create(user=user, site=site, mac=mac, policy_json={"type": "voucher"})
 
-    voucher.status = "used"
-    voucher.used_by_mac = mac
-    voucher.used_at = timezone.now()
-    voucher.save(update_fields=["status", "used_by_mac", "used_at"])
     return JsonResponse({"ok": True, "session_id": session.id})
 
 
 @require_POST
 def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
-    response_xml = """<?xml version='1.0'?>
+    tenant_id = int(request.POST.get("tenant_id", 0))
+    site_id = int(request.POST.get("site_id", 0))
+    ssid_name = request.POST.get("ssid", "")
+    mac = request.POST.get("mac", "")
+    session_minutes = int(request.POST.get("minutes", 60))
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        site = Site.objects.get(id=site_id, tenant=tenant)
+        ssid = SSID.objects.get(site=site, name=ssid_name)
+        controller = ssid.controller
+    except (Tenant.DoesNotExist, Site.DoesNotExist, SSID.DoesNotExist):
+        response_xml = """<?xml version='1.0'?>
+<WISPAccessGatewayParam>
+  <ProxyResponse>
+    <MessageType>120</MessageType>
+    <ResponseCode>255</ResponseCode>
+    <ReplyMessage>Invalid parameters</ReplyMessage>
+  </ProxyResponse>
+</WISPAccessGatewayParam>"""
+        return HttpResponse(response_xml, content_type="application/xml", status=400)
+
+    client = get_client(
+        controller.type,
+        controller.base_url,
+        controller.api_key,
+        controller.api_secret,
+        controller.metadata,
+    )
+    result = client.authorize_mac(ssid_name, mac, session_minutes * 60_000)
+
+    if result.ok:
+        # Create or update session
+        user, _ = GuestUser.objects.get_or_create(tenant=tenant, mac=mac)
+        Session.objects.create(
+            user=user,
+            site=site,
+            mac=mac,
+            policy_json={"type": "controller", "ssid": ssid_name, "minutes": session_minutes},
+        )
+        response_xml = """<?xml version='1.0'?>
 <WISPAccessGatewayParam>
   <ProxyResponse>
     <MessageType>120</MessageType>
@@ -231,9 +305,91 @@ def ruckus_wispr_login(request: HttpRequest) -> HttpResponse:
     <ReplyMessage>Login Succeeded</ReplyMessage>
   </ProxyResponse>
 </WISPAccessGatewayParam>"""
-    return HttpResponse(response_xml, content_type="application/xml")
+        return HttpResponse(response_xml, content_type="application/xml")
+    else:
+        response_xml = f"""<?xml version='1.0'?>
+<WISPAccessGatewayParam>
+  <ProxyResponse>
+    <MessageType>120</MessageType>
+    <ResponseCode>255</ResponseCode>
+    <ReplyMessage>{result.message or 'Login Failed'}</ReplyMessage>
+  </ProxyResponse>
+</WISPAccessGatewayParam>"""
+        return HttpResponse(response_xml, content_type="application/xml", status=403)
 
 
 @require_POST
 def ruckus_coa_stub(request: HttpRequest) -> JsonResponse:
-    return JsonResponse({"ok": True, "message": "CoA sent (stub)"})
+    tenant_id = int(request.POST.get("tenant_id", 0))
+    site_id = int(request.POST.get("site_id", 0))
+    ssid_name = request.POST.get("ssid", "")
+    mac = request.POST.get("mac", "")
+    reason = request.POST.get("reason", "")
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        site = Site.objects.get(id=site_id, tenant=tenant)
+        ssid = SSID.objects.get(site=site, name=ssid_name)
+        controller = ssid.controller
+    except (Tenant.DoesNotExist, Site.DoesNotExist, SSID.DoesNotExist):
+        return JsonResponse({"ok": False, "error": "invalid_params"}, status=400)
+
+    client = get_client(
+        controller.type,
+        controller.base_url,
+        controller.api_key,
+        controller.api_secret,
+        controller.metadata,
+    )
+    ok = client.disconnect_mac(ssid_name, mac, message=reason)
+    if ok:
+        # Optionally end active session for mac
+        Session.objects.filter(site=site, mac=mac, end_at__isnull=True).update(
+            end_at=timezone.now()
+        )
+        return JsonResponse({"ok": True, "message": "CoA sent"})
+    return JsonResponse({"ok": False, "error": "controller_failed"}, status=502)
+
+
+@require_GET
+def redirect_click(request: HttpRequest) -> HttpResponse:
+    """First-party click redirect that logs a click event then redirects."""
+    target = request.GET.get("u", "")
+    tenant_id = request.GET.get("tenant_id")
+    site_id = request.GET.get("site_id")
+    creative_id = request.GET.get("creative_id")
+    slot = request.GET.get("slot", "")
+    mac = request.GET.get("mac", "")
+
+    # Basic validation of target URL
+    if not target or not (target.startswith("http://") or target.startswith("https://")):
+        return JsonResponse({"ok": False, "error": "invalid_target"}, status=400)
+
+    try:
+        tenant = Tenant.objects.get(id=int(tenant_id)) if tenant_id else None
+        site = (
+            Site.objects.get(id=int(site_id), tenant=tenant) if tenant and site_id else None
+        )
+    except (Tenant.DoesNotExist, Site.DoesNotExist):
+        tenant = None
+        site = None
+
+    if tenant and site:
+        try:
+            cid = int(creative_id) if (creative_id and creative_id.isdigit()) else None
+            Event.objects.create(
+                tenant=tenant,
+                site=site,
+                type="click",
+                payload_json={
+                    "slot": slot,
+                    "creative_id": cid,
+                    "mac": mac,
+                    "target": target,
+                },
+            )
+        except Exception:
+            # avoid blocking the redirect on logging errors
+            pass
+
+    return HttpResponseRedirect(target)
